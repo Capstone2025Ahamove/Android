@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,6 +9,7 @@ android {
     namespace = "com.example.aidashboard"
     compileSdk = 34
 
+    buildFeatures { buildConfig = true }
     defaultConfig {
         applicationId = "com.example.aidashboard"
         minSdk = 26
@@ -16,7 +19,15 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "OPENAI_API_KEY", "\"${System.getenv("OPENAI_API_KEY") ?: "dummy-key"}\"")
+        val props = Properties().apply {
+            val f = rootProject.file("local.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        val openAiKey = (props.getProperty("OPENAI_API_KEY")
+            ?: System.getenv("OPENAI_API_KEY")
+            ?: "").trim() // trim to remove accidental spaces/CRLF
+
+        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiKey\"")
 
     }
 
