@@ -5,9 +5,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -15,7 +17,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
 
-            // All relevant state lifted here
             var uploadedFileUri by remember { mutableStateOf<Uri?>(null) }
             var isImage by remember { mutableStateOf(false) }
 
@@ -30,15 +31,13 @@ class MainActivity : ComponentActivity() {
                         onStartAnalyze = { uri, imageFlag ->
                             uploadedFileUri = uri
                             isImage = imageFlag
-
-                            // Clear previous chat and IDs on new analysis
                             chatMessages = listOf()
                             chatThreadId = null
                             chatFileId = null
                             initialSummary = null
-
                             navController.navigate("result")
-                        }
+                        },
+                        onOpenHistory = { navController.navigate("history") }
                     )
                 }
                 composable("result") {
@@ -50,8 +49,6 @@ class MainActivity : ComponentActivity() {
                             chatThreadId = threadId
                             chatFileId = fileId
                             initialSummary = summary
-
-                            // Start chat with summary if it's a fresh analysis
                             if (chatMessages.isEmpty()) {
                                 chatMessages = listOf(ChatMessage("assistant", summary))
                             }
@@ -61,7 +58,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 composable("chat") {
-                    // Ensure summary appears only for new chat
                     if (chatMessages.isEmpty() && !initialSummary.isNullOrBlank()) {
                         chatMessages = listOf(ChatMessage("assistant", initialSummary ?: ""))
                     }
@@ -71,6 +67,30 @@ class MainActivity : ComponentActivity() {
                         initialSummary = initialSummary ?: "",
                         messages = chatMessages,
                         onMessagesChanged = { newMsgs -> chatMessages = newMsgs },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("history") {
+                    var sessions by remember { mutableStateOf<List<ChatSession>>(emptyList()) }
+                    var isLoading by remember { mutableStateOf(true) }
+
+                    // Load sessions when this screen appears
+                    LaunchedEffect(Unit) {
+                        isLoading = true
+                        sessions = ChatStore.getAll(this@MainActivity)
+                        isLoading = false
+                    }
+
+                    HistoryScreen(
+                        isLoading = isLoading,
+                        sessions = sessions,
+                        onOpenSession = { session ->
+                            chatThreadId = session.threadId
+                            chatMessages = session.messages
+                            initialSummary = session.messages.firstOrNull()?.content ?: ""
+                            chatFileId = null // Optional
+                            navController.navigate("chat")
+                        },
                         onBack = { navController.popBackStack() }
                     )
                 }

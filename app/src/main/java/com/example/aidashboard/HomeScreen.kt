@@ -28,7 +28,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
 @Composable
-fun HomeScreen(onStartAnalyze: (Uri, Boolean) -> Unit) {
+
+fun HomeScreen(
+    onStartAnalyze: (Uri, Boolean) -> Unit,
+    onOpenHistory: () -> Unit = {}       // <-- add this
+)
+ {
     var pickedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var pickedSheetUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -61,7 +66,7 @@ fun HomeScreen(onStartAnalyze: (Uri, Boolean) -> Unit) {
                     .size(36.dp)
                     .clip(RoundedCornerShape(50))
                     .border(1.5.dp, Color(0xFF00731D), RoundedCornerShape(50))
-                    .clickable { },
+                    .clickable { onOpenHistory() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

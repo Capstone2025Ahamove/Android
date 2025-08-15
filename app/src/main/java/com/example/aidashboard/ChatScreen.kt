@@ -1,5 +1,6 @@
 package com.example.aidashboard
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -14,15 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import com.example.aidashboard.ChatMessage
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +36,7 @@ fun ChatScreen(
     var userInput by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -84,12 +84,8 @@ fun ChatScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(0.94f)
-                                    .border(
-                                        width = 2.dp,
-                                        color = Color(0xFF00731D),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .background(Color.White, shape = RoundedCornerShape(16.dp))
+                                    .border(2.dp, Color(0xFF00731D), RoundedCornerShape(16.dp))
+                                    .background(Color.White, RoundedCornerShape(16.dp))
                                     .padding(18.dp)
                             ) {
                                 Text(
@@ -104,12 +100,8 @@ fun ChatScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(0.8f)
-                                    .border(
-                                        width = 1.5.dp,
-                                        color = Color(0xFF00731D),
-                                        shape = RoundedCornerShape(16.dp)
-                                    )
-                                    .background(Color.White, shape = RoundedCornerShape(16.dp))
+                                    .border(1.5.dp, Color(0xFF00731D), RoundedCornerShape(16.dp))
+                                    .background(Color.White, RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
                                 Text(
@@ -123,7 +115,7 @@ fun ChatScreen(
                         } else {
                             Box(
                                 modifier = Modifier
-                                    .background(Color(0xFF00731D), shape = RoundedCornerShape(16.dp))
+                                    .background(Color(0xFF00731D), RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
                                 Text(
@@ -159,11 +151,7 @@ fun ChatScreen(
                     onValueChange = { userInput = it },
                     modifier = Modifier
                         .weight(1f)
-                        .border(
-                            width = 2.dp,
-                            color = Color(0xFF00731D),
-                            shape = RoundedCornerShape(12.dp)
-                        ),
+                        .border(2.dp, Color(0xFF00731D), RoundedCornerShape(12.dp)),
                     placeholder = { Text("Continue conversation...") },
                     singleLine = true,
                     enabled = !isLoading,
@@ -179,7 +167,8 @@ fun ChatScreen(
                     onClick = {
                         val messageText = userInput.trim()
                         if (messageText.isNotEmpty() && !isLoading) {
-                            onMessagesChanged(messages + ChatMessage("user", messageText))
+                            val updatedUserMessages = messages + ChatMessage("user", messageText)
+                            onMessagesChanged(updatedUserMessages)
                             userInput = ""
                             isLoading = true
 
@@ -190,22 +179,54 @@ fun ChatScreen(
                                     if (runId != null) {
                                         val reply = OpenAiRepository.pollAndFetchChatMessage(threadId, runId)
                                         launch(Dispatchers.Main) {
-                                            if (!reply.isNullOrBlank()) {
-                                                onMessagesChanged(messages + ChatMessage("user", messageText) + ChatMessage("assistant", reply))
-                                            } else {
-                                                onMessagesChanged(messages + ChatMessage("user", messageText) + ChatMessage("assistant", "❌ No response from assistant."))
-                                            }
+                                            val updatedAllMessages = updatedUserMessages + ChatMessage("assistant", reply ?: "❌ No response from assistant.")
+                                            onMessagesChanged(updatedAllMessages)
+
+                                            val now = System.currentTimeMillis()
+                                            val session = ChatSession(
+                                                id = threadId,
+                                                title = "Chat with Assistant",
+                                                threadId = threadId,
+                                                messages = updatedAllMessages,
+                                                createdAt = now,
+                                                updatedAt = now
+                                            )
+                                            ChatStore.upsert(context, session)
                                             isLoading = false
                                         }
                                     } else {
                                         launch(Dispatchers.Main) {
-                                            onMessagesChanged(messages + ChatMessage("user", messageText) + ChatMessage("assistant", "❌ Run failed."))
+                                            val failMessages = updatedUserMessages + ChatMessage("assistant", "❌ Run failed.")
+                                            onMessagesChanged(failMessages)
+
+                                            val now = System.currentTimeMillis()
+                                            val session = ChatSession(
+                                                id = threadId,
+                                                title = "Chat with Assistant",
+                                                threadId = threadId,
+                                                messages = failMessages,
+                                                createdAt = now,
+                                                updatedAt = now
+                                            )
+                                            ChatStore.upsert(context, session)
                                             isLoading = false
                                         }
                                     }
                                 } else {
                                     launch(Dispatchers.Main) {
-                                        onMessagesChanged(messages + ChatMessage("user", messageText) + ChatMessage("assistant", "❌ Failed to send message."))
+                                        val failMessages = updatedUserMessages + ChatMessage("assistant", "❌ Failed to send message.")
+                                        onMessagesChanged(failMessages)
+
+                                        val now = System.currentTimeMillis()
+                                        val session = ChatSession(
+                                            id = threadId,
+                                            title = "Chat with Assistant",
+                                            threadId = threadId,
+                                            messages = failMessages,
+                                            createdAt = now,
+                                            updatedAt = now
+                                        )
+                                        ChatStore.upsert(context, session)
                                         isLoading = false
                                     }
                                 }
