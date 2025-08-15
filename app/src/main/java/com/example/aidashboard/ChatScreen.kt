@@ -187,6 +187,7 @@ fun ChatScreen(
                                                 id = threadId,
                                                 title = "Chat with Assistant",
                                                 threadId = threadId,
+                                                fileId = fileId,
                                                 messages = updatedAllMessages,
                                                 createdAt = now,
                                                 updatedAt = now
@@ -204,6 +205,7 @@ fun ChatScreen(
                                                 id = threadId,
                                                 title = "Chat with Assistant",
                                                 threadId = threadId,
+                                                fileId = fileId,
                                                 messages = failMessages,
                                                 createdAt = now,
                                                 updatedAt = now
@@ -222,6 +224,7 @@ fun ChatScreen(
                                             id = threadId,
                                             title = "Chat with Assistant",
                                             threadId = threadId,
+                                            fileId = fileId,
                                             messages = failMessages,
                                             createdAt = now,
                                             updatedAt = now

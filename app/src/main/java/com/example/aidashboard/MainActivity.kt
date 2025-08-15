@@ -6,10 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,18 +51,32 @@ class MainActivity : ComponentActivity() {
                             if (chatMessages.isEmpty()) {
                                 chatMessages = listOf(ChatMessage("assistant", summary))
                             }
-                            navController.navigate("chat")
+                            navController.navigate("chat/${threadId}/${fileId}")
                         },
                         onBack = { navController.popBackStack() }
                     )
                 }
-                composable("chat") {
+                composable(
+                    "chat/{threadId}/{fileId}",
+                    arguments = listOf(
+                        navArgument("threadId") { type = NavType.StringType },
+                        navArgument("fileId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val threadId = backStackEntry.arguments?.getString("threadId") ?: ""
+                    val fileId = backStackEntry.arguments?.getString("fileId") ?: ""
+
+                    // Keep state consistent
+                    chatThreadId = threadId
+                    chatFileId = fileId
+
                     if (chatMessages.isEmpty() && !initialSummary.isNullOrBlank()) {
                         chatMessages = listOf(ChatMessage("assistant", initialSummary ?: ""))
                     }
+
                     ChatScreen(
-                        threadId = chatThreadId ?: "",
-                        fileId = chatFileId ?: "",
+                        threadId = threadId,
+                        fileId = fileId,
                         initialSummary = initialSummary ?: "",
                         messages = chatMessages,
                         onMessagesChanged = { newMsgs -> chatMessages = newMsgs },
@@ -73,8 +86,8 @@ class MainActivity : ComponentActivity() {
                 composable("history") {
                     var sessions by remember { mutableStateOf<List<ChatSession>>(emptyList()) }
                     var isLoading by remember { mutableStateOf(true) }
+                    val scope = rememberCoroutineScope()
 
-                    // Load sessions when this screen appears
                     LaunchedEffect(Unit) {
                         isLoading = true
                         sessions = ChatStore.getAll(this@MainActivity)
@@ -86,11 +99,18 @@ class MainActivity : ComponentActivity() {
                         sessions = sessions,
                         onOpenSession = { session ->
                             chatThreadId = session.threadId
+                            chatFileId = session.fileId
                             chatMessages = session.messages
                             initialSummary = session.messages.firstOrNull()?.content ?: ""
-                            chatFileId = null // Optional
-                            navController.navigate("chat")
+                            navController.navigate("chat/${session.threadId}/${session.fileId}")
                         },
+                        onDeleteSession = { session ->
+                            scope.launch {
+                                ChatStore.delete(this@MainActivity, session.id)
+                                sessions = ChatStore.getAll(this@MainActivity)
+                            }
+                        },
+
                         onBack = { navController.popBackStack() }
                     )
                 }
