@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.TableChart
@@ -25,15 +26,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 
 @Composable
-
 fun HomeScreen(
+    navController: NavHostController,
     onStartAnalyze: (Uri, Boolean) -> Unit,
-    onOpenHistory: () -> Unit = {}       // <-- add this
-)
- {
+    onOpenHistory: () -> Unit = {}
+) {
     var pickedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var pickedSheetUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -70,25 +71,24 @@ fun HomeScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = "Profile",
+                    imageVector = Icons.Default.History,
+                    contentDescription = "History",
                     tint = Color(0xFF00731D),
                     modifier = Modifier.size(28.dp)
                 )
             }
+
             Row {
-//                IconButton(onClick = { }) {
-//                    Icon(Icons.Default.Download, null, tint = Color(0xFF00731D))
-//                }
-                IconButton(onClick = { }) {
-                    Icon(Icons.Default.MoreVert, null, tint = Color(0xFF00731D))
+                IconButton(onClick = {
+                    navController.navigate("kpi_analysis")
+                }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color(0xFF00731D))
                 }
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        // Title
         Text("AI DASHBOARD", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00731D))
         Text("INTERPRETER", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00731D))
         Text(
@@ -101,7 +101,6 @@ fun HomeScreen(
 
         Spacer(Modifier.height(32.dp))
 
-        // Upload Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -139,7 +138,6 @@ fun HomeScreen(
 
         Spacer(Modifier.height(32.dp))
 
-        // File Preview
         if (pickedPhotoUri != null || pickedSheetUri != null) {
             Column(
                 modifier = Modifier
@@ -159,7 +157,6 @@ fun HomeScreen(
                             .height(130.dp)
                             .clip(RoundedCornerShape(8.dp))
                     )
-
                 } else {
                     Text(
                         text = pickedSheetUri?.lastPathSegment ?: "Unknown file",
@@ -218,9 +215,8 @@ fun HomeScreen(
             Spacer(Modifier.height(24.dp))
         }
 
-        Spacer(Modifier.height(12.dp)) // Reduce push to bottom
+        Spacer(Modifier.height(12.dp))
 
-        // Start Analyze Button
         Button(
             onClick = { isLoading = true },
             enabled = !isLoading,

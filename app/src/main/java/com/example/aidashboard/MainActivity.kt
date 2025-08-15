@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
             NavHost(navController = navController, startDestination = "home") {
                 composable("home") {
                     HomeScreen(
+                        navController = navController,
                         onStartAnalyze = { uri, imageFlag ->
                             uploadedFileUri = uri
                             isImage = imageFlag
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
                         onOpenHistory = { navController.navigate("history") }
                     )
                 }
+
                 composable("result") {
                     ResultScreen(
                         context = this@MainActivity,
@@ -114,6 +116,14 @@ class MainActivity : ComponentActivity() {
                         onBack = { navController.popBackStack() }
                     )
                 }
+                composable("kpi_analysis") {
+                    KPIAnalysisScreen(
+                        onBack = { navController.popBackStack() },
+                        assistantId = "asst_iQQIqjmFRA8xSFHuEGmU6PfI",
+                        apiKey = "com.example.aidashboard.BuildConfig.OPENAI_API_KEY"
+                    )
+                }
+
             }
         }
     }
