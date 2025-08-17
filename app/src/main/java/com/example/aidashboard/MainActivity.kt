@@ -119,8 +119,8 @@ class MainActivity : ComponentActivity() {
                 composable("kpi_analysis") {
                     KPIAnalysisScreen(
                         onBack = { navController.popBackStack() },
-                        assistantId = "asst_iQQIqjmFRA8xSFHuEGmU6PfI",
-                        apiKey = "com.example.aidashboard.BuildConfig.OPENAI_API_KEY"
+                        assistantId = "asst_i0QIqjmFRA8xSFHuEGmU6PfI",
+                        apiKey = BuildConfig.OPENAI_API_KEY
                     )
                 }
 

@@ -138,7 +138,9 @@ class KPIAnalyzer(private val assistantId: String, private val apiKey: String) {
                 "code_interpreter" to mapOf("file_ids" to fileIds)
             )
         )
+
         val json = JSONObject(payload).toString()
+        Log.d("KPIAnalyzer", "📤 Run Request JSON: $json")
 
         val request = Request.Builder()
             .url("https://api.openai.com/v1/threads/$threadId/runs")
@@ -150,12 +152,22 @@ class KPIAnalyzer(private val assistantId: String, private val apiKey: String) {
 
         return try {
             val response = client.newCall(request).execute()
-            val jsonResp = JSONObject(response.body?.string() ?: return null)
+            val bodyString = response.body?.string()
+            Log.d("KPIAnalyzer", "✅ Run Response: $bodyString")
+
+            if (!response.isSuccessful) {
+                Log.e("KPIAnalyzer", "❌ Run request failed with HTTP ${response.code}")
+                return null
+            }
+
+            val jsonResp = JSONObject(bodyString ?: return null)
             jsonResp.getString("id")
         } catch (e: Exception) {
+            Log.e("KPIAnalyzer", "❌ Exception in startRun: ${e.message}")
             null
         }
     }
+
 
     // Poll run status until complete
     private fun pollRunStatus(threadId: String, runId: String): Boolean {
