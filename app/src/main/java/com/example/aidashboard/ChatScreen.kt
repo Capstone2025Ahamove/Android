@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -22,21 +23,75 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     threadId: String,
     fileId: String,
-    initialSummary: String,
+    initialSummary: String,                // shown in UI header if you like; NOT stored in history
     messages: List<ChatMessage>,
     onMessagesChanged: (List<ChatMessage>) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var userInput by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    var createdAt by remember { mutableStateOf<Long?>(null) }   // preserve original creation time
+    val listState = rememberLazyListState()
+
+    // --- Load existing session by threadId on first enter ---
+    LaunchedEffect(threadId) {
+        // try to load an existing session by ID (ID is the threadId)
+        val existing = withContext(Dispatchers.IO) {
+            ChatStore.getById(context, threadId)
+        }
+        if (existing != null) {
+            createdAt = existing.createdAt
+            // hydrate UI with stored messages (if caller provided an empty list)
+            if (messages.isEmpty()) {
+                onMessagesChanged(existing.messages)
+            }
+        } else {
+            // first time opening this chat: create a shell session so History shows it
+            val now = System.currentTimeMillis()
+            createdAt = now
+            val newSession = ChatSession(
+                id = threadId,                // IMPORTANT: stable key == OpenAI threadId
+                title = "Chat with Assistant",
+                threadId = threadId,
+                fileId = fileId,
+                messages = emptyList(),       // chat-only; do NOT insert summary here
+                createdAt = now,
+                updatedAt = now
+            )
+            withContext(Dispatchers.IO) {
+                ChatStore.upsert(context, newSession)
+            }
+        }
+    }
+
+    // --- Small helper: persist current messages safely (preserve createdAt) ---
+    fun persist(messagesToSave: List<ChatMessage>) {
+        val now = System.currentTimeMillis()
+        val created = createdAt ?: now
+        createdAt = created
+        val session = ChatSession(
+            id = threadId,
+            title = "Chat with Assistant",
+            threadId = threadId,
+            fileId = fileId,
+            messages = messagesToSave,
+            createdAt = created,             // keep original
+            updatedAt = now
+        )
+        scope.launch(Dispatchers.IO) {
+            ChatStore.upsert(context, session)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -66,6 +121,7 @@ fun ChatScreen(
                 .background(Color(0xFFFCFAF5))
         ) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -80,7 +136,7 @@ fun ChatScreen(
                             .padding(vertical = 4.dp),
                         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
                     ) {
-                        if (!isUser && msg == messages.first()) {
+                        if (!isUser && msg == messages.firstOrNull()) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth(0.94f)
@@ -139,6 +195,8 @@ fun ChatScreen(
                     }
                 }
             }
+
+            // input row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -167,69 +225,40 @@ fun ChatScreen(
                     onClick = {
                         val messageText = userInput.trim()
                         if (messageText.isNotEmpty() && !isLoading) {
-                            val updatedUserMessages = messages + ChatMessage("user", messageText)
-                            onMessagesChanged(updatedUserMessages)
+                            // 1) add user message locally + persist
+                            val afterUser = messages + ChatMessage("user", messageText)
+                            onMessagesChanged(afterUser)
+                            persist(afterUser)
+
                             userInput = ""
                             isLoading = true
 
+                            // 2) send to OpenAI, then append assistant reply + persist
                             scope.launch(Dispatchers.IO) {
                                 val sendSuccess = OpenAiRepository.sendChatMessage(threadId, messageText)
                                 if (sendSuccess) {
                                     val runId = OpenAiRepository.runChatAssistant(threadId, fileId)
                                     if (runId != null) {
                                         val reply = OpenAiRepository.pollAndFetchChatMessage(threadId, runId)
-                                        launch(Dispatchers.Main) {
-                                            val updatedAllMessages = updatedUserMessages + ChatMessage("assistant", reply ?: "❌ No response from assistant.")
-                                            onMessagesChanged(updatedAllMessages)
-
-                                            val now = System.currentTimeMillis()
-                                            val session = ChatSession(
-                                                id = threadId,
-                                                title = "Chat with Assistant",
-                                                threadId = threadId,
-                                                fileId = fileId,
-                                                messages = updatedAllMessages,
-                                                createdAt = now,
-                                                updatedAt = now
-                                            )
-                                            ChatStore.upsert(context, session)
+                                        withContext(Dispatchers.Main) {
+                                            val afterAssistant = afterUser + ChatMessage("assistant", reply ?: "❌ No response from assistant.")
+                                            onMessagesChanged(afterAssistant)
+                                            persist(afterAssistant)
                                             isLoading = false
                                         }
                                     } else {
-                                        launch(Dispatchers.Main) {
-                                            val failMessages = updatedUserMessages + ChatMessage("assistant", "❌ Run failed.")
-                                            onMessagesChanged(failMessages)
-
-                                            val now = System.currentTimeMillis()
-                                            val session = ChatSession(
-                                                id = threadId,
-                                                title = "Chat with Assistant",
-                                                threadId = threadId,
-                                                fileId = fileId,
-                                                messages = failMessages,
-                                                createdAt = now,
-                                                updatedAt = now
-                                            )
-                                            ChatStore.upsert(context, session)
+                                        withContext(Dispatchers.Main) {
+                                            val fail = afterUser + ChatMessage("assistant", "❌ Run failed.")
+                                            onMessagesChanged(fail)
+                                            persist(fail)
                                             isLoading = false
                                         }
                                     }
                                 } else {
-                                    launch(Dispatchers.Main) {
-                                        val failMessages = updatedUserMessages + ChatMessage("assistant", "❌ Failed to send message.")
-                                        onMessagesChanged(failMessages)
-
-                                        val now = System.currentTimeMillis()
-                                        val session = ChatSession(
-                                            id = threadId,
-                                            title = "Chat with Assistant",
-                                            threadId = threadId,
-                                            fileId = fileId,
-                                            messages = failMessages,
-                                            createdAt = now,
-                                            updatedAt = now
-                                        )
-                                        ChatStore.upsert(context, session)
+                                    withContext(Dispatchers.Main) {
+                                        val fail = afterUser + ChatMessage("assistant", "❌ Failed to send message.")
+                                        onMessagesChanged(fail)
+                                        persist(fail)
                                         isLoading = false
                                     }
                                 }
@@ -241,6 +270,13 @@ fun ChatScreen(
                     Icon(Icons.Default.Send, contentDescription = "Send", tint = Color(0xFF00731D))
                 }
             }
+        }
+    }
+
+    // auto-scroll to bottom when new messages arrive
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 }

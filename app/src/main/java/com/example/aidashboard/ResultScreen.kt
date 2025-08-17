@@ -22,15 +22,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.app.ActivityCompat
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.content.ContextCompat
+
 @Composable
 fun ResultScreen(
     context: Context,
@@ -42,19 +42,24 @@ fun ResultScreen(
     val summaryAssistantId = "asst_lYMPOqnXe86rZ2oPqe6N3bx2"
     val insightAssistantId = "asst_LIuWUGUi5ClNpJMuEAbYQsRs"
 
-    var summary by remember { mutableStateOf("Loading summary...") }
-    var insights by remember { mutableStateOf("Loading key insights...") }
-    var isLoading by remember { mutableStateOf(true) }
-    var threadId by remember { mutableStateOf<String?>(null) }
-    var fileId by remember { mutableStateOf<String?>(null) }
+    // IMPORTANT: persist across recompositions & back stack restores
+    var summary by rememberSaveable { mutableStateOf("Loading summary...") }
+    var insights by rememberSaveable { mutableStateOf("Loading key insights...") }
+    var isLoading by rememberSaveable { mutableStateOf(true) }
+    var threadId by rememberSaveable { mutableStateOf<String?>(null) }
+    var fileId by rememberSaveable { mutableStateOf<String?>(null) }
+    var didAnalyze by rememberSaveable { mutableStateOf(false) }
 
-    // The first assistant call will store threadId and fileId for chat reuse
-    LaunchedEffect(uri) {
+    // Run analysis exactly once per screen lifetime
+    LaunchedEffect(Unit) {
+        if (didAnalyze) return@LaunchedEffect
+        didAnalyze = true
+
         isLoading = true
         summary = "Loading summary..."
         insights = "Loading key insights..."
 
-        // Use a version of analyzeWithAssistant that also returns threadId and fileId
+        // First call returns threadId + fileId that we will REUSE for chat
         OpenAiRepository.analyzeWithAssistantAndReturnIds(
             context, uri, isImage, summaryAssistantId
         ) { result, tId, fId ->
@@ -63,7 +68,7 @@ fun ResultScreen(
             fileId = fId
         }
 
-        // Insights can run in parallel, doesn't need to set thread/file IDs
+        // Insights may run in parallel; it doesn't change thread/file IDs
         OpenAiRepository.analyzeWithAssistant(
             context, uri, isImage, insightAssistantId
         ) { result ->
@@ -121,7 +126,7 @@ fun ResultScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Loading...", color = Color(0xFF00731D), fontWeight = FontWeight.SemiBold)
             } else {
-                // Summary Section Card (with border)
+                // Summary Section Card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -168,7 +173,6 @@ fun ResultScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-
             }
 
             Spacer(Modifier.weight(1f))
@@ -192,11 +196,15 @@ fun ResultScreen(
                     Text("Download Report", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.width(16.dp))
-                // Chat Icon, only enabled if IDs ready
                 IconButton(
                     onClick = {
-                        if (threadId != null && fileId != null)
-                            onChat(threadId!!, fileId!!, summary + "\n\nIf you have any more questions, feel free to ask me 🙂")
+                        if (threadId != null && fileId != null) {
+                            onChat(
+                                threadId!!,
+                                fileId!!,
+                                summary + "\n\nIf you have any more questions, feel free to ask me 🙂"
+                            )
+                        }
                     },
                     modifier = Modifier
                         .size(48.dp)
@@ -211,12 +219,8 @@ fun ResultScreen(
     }
 }
 
-
-
 fun downloadTextFile(context: Context, content: String) {
     val fileName = "AI_Report.txt"
-
-    // For Android Q (API 29) and above, use MediaStore API
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val resolver = context.contentResolver
         val contentValues = android.content.ContentValues().apply {
@@ -224,7 +228,6 @@ fun downloadTextFile(context: Context, content: String) {
             put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain")
             put(android.provider.MediaStore.Downloads.RELATIVE_PATH, "Download/")
         }
-
         val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
         if (uri != null) {
             resolver.openOutputStream(uri)?.use { outputStream ->
@@ -235,17 +238,14 @@ fun downloadTextFile(context: Context, content: String) {
             Toast.makeText(context, "❌ Failed to save report", Toast.LENGTH_SHORT).show()
         }
     } else {
-        // For pre-Android Q: Write directly to Downloads
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         val file = File(downloadsDir, fileName)
-
-        // Check permission
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            != PackageManager.PERMISSION_GRANTED) {
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             Toast.makeText(context, "Please grant storage permission in settings", Toast.LENGTH_LONG).show()
             return
         }
-
         try {
             FileOutputStream(file).use { it.write(content.toByteArray()) }
             Toast.makeText(context, "Report saved to Downloads", Toast.LENGTH_LONG).show()
@@ -255,4 +255,3 @@ fun downloadTextFile(context: Context, content: String) {
         }
     }
 }
-

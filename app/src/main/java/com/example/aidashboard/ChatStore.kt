@@ -49,4 +49,18 @@ object ChatStore {
     suspend fun clear(context: Context) {
         saveAll(context, emptyList())
     }
+
+
+    suspend fun getByThreadId(context: Context, threadId: String): ChatSession? =
+        loadAllInternal(context).firstOrNull { it.threadId == threadId }
+
+    suspend fun upsertByThreadId(context: Context, session: ChatSession): ChatSession {
+        // Ensure session.id == session.threadId for stable upserts
+        val fixed = if (session.threadId != null && session.id != session.threadId) {
+            session.copy(id = session.threadId)
+        } else session
+        upsert(context, fixed)
+        return fixed
+    }
+
 }
